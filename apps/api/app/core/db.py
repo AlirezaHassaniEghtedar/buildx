@@ -1,0 +1,51 @@
+"""Session/engine factory. Postgres در prod، SQLite در dev/تست."""
+
+import os
+from collections.abc import AsyncGenerator
+
+from fastapi import Request
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+
+from app.core.config import get_settings
+
+_engine: AsyncEngine | None = None
+_sessionmaker: async_sessionmaker[AsyncSession] | None = None
+
+
+def _make_engine() -> AsyncEngine:
+    url = os.getenv("DATABASE_URL") or get_settings().database_url
+    if url.startswith("sqlite"):
+        return create_async_engine(url, connect_args={"check_same_thread": False})
+    return create_async_engine(url, pool_pre_ping=True)
+
+
+def get_engine() -> AsyncEngine:
+    global _engine
+    if _engine is None:
+        _engine = _make_engine()
+    return _engine
+
+
+def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
+    global _sessionmaker
+    if _sessionmaker is None:
+        _sessionmaker = async_sessionmaker(get_engine(), expire_on_commit=False)
+    return _sessionmaker
+
+
+async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
+    """FastAPI dependency — همان سشن middleware (request.state.db) تا همه‌چیز یک تراکنش داشته باشد."""
+    yield request.state.db
+
+
+async def dispose_engine() -> None:
+    global _engine, _sessionmaker
+    if _engine is not None:
+        await _engine.dispose()
+    _engine = None
+    _sessionmaker = None

@@ -1,0 +1,19 @@
+{$DOMAIN:localhost} {
+	# API
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+	handle /webhook/* {
+		reverse_proxy api:8000
+	}
+	handle /healthz {
+		reverse_proxy api:8000
+	}
+
+	# Next.js
+	handle {
+		reverse_proxy web:3000
+	}
+
+	encode gzip zstd
+}

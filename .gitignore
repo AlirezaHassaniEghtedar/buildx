@@ -1,0 +1,165 @@
+# ═══════════════════════════════════════════════════════════════
+#  BotForge — .gitignore
+#  پوشش: پایتون (API)، Node/Next.js (وب)، داکر، ویندوز، لینوکس، مک، ویرایشگرها
+#  قاعده: هر فایلِ تولیدشده/موقت/محرمانه نباید به مخزن اضافه شود.
+# ═══════════════════════════════════════════════════════════════
+
+# ── محیط مجازی پایتون (همهٔ نام‌های رایج) ──────────────────────
+.venv/
+venv/
+env/
+ENV/
+.venv-*/
+pythonenv/
+
+# ── بایت‌کد و کش پایتون ────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# ── بیلد و پکیج پایتون ────────────────────────────────────────
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+wheels/
+MANIFEST
+
+# ── ابزارهای کیفیت کد (مypy / pytest / ruff /覆盖率) ──────────
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.cache/
+
+# ── دیتابیس‌های لوکال (SQLite dev / تست) ──────────────────────
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+# نسخه‌های مایگریشن alembic باید کامیت شوند — از آن‌ها چیزی نادیده گرفته نمی‌شود.
+
+# ── کلیدها، توکن‌ها و تنظیمات محرمانه ─────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+secrets/
+# فایل‌های .env.example در همهٔ مسیرها (apps/api، deploy و ...) قابل کامیت هستند.
+
+# ── Node.js ───────────────────────────────────────────────────
+node_modules/
+.pnp
+.pnp.*
+.npm/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnpm-store/
+package-lock.bak
+
+# لاگ‌های پکیج‌منیجرها
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ── Next.js ───────────────────────────────────────────────────
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+.eslintcache
+.stylelintcache
+.vercel
+.turbo/
+
+# ── تست فرانت ─────────────────────────────────────────────────
+coverage/
+.nyc_output/
+
+# ── داکر (تنظیمات محلی؛ فقط .env.example کامیت می‌شود) ────────
+deploy/.env
+
+# ── لاگ‌ها ────────────────────────────────────────────────────
+*.log
+logs/
+
+# ═══════════════════════════════════════════════════════════════
+#  فایل‌های سیستمی سیستم‌عامل‌ها
+# ═══════════════════════════════════════════════════════════════
+
+# ── ویندوز ────────────────────────────────────────────────────
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+*.stackdump
+[Cc]ache/
+
+# ── مک (macOS) ────────────────────────────────────────────────
+.DS_Store
+._*
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.Trashes
+.DocumentRevisions-V100
+.fseventsd
+.TemporaryItems
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.Network Backups/
+
+# ── لینوکس ────────────────────────────────────────────────────
+*~
+.directory
+.Trash-*/
+.nfs*
+
+# ── ویرایشگرها و IDEها ────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
+*.sublime-workspace
+*.sublime-project
+.history/
+.fleet/
+.freebuff/
+
+# ── فایل‌های موقت و پشتیبان ───────────────────────────────────
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+*.save
+*.autosave

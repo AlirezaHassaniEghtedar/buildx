@@ -1,0 +1,10 @@
+# قیمت هر ۱۰۰۰ توکن به دلار — برای هر مدل OpenAI-compatible قابل افزودن است
+default:
+  input: 0.5
+  output: 1.5
+gpt-4o-mini:
+  input: 0.15
+  output: 0.6
+gpt-4o:
+  input: 2.5
+  output: 10.0

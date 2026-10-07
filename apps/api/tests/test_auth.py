@@ -1,0 +1,55 @@
+"""تست‌های Auth — پذیرش فاز ۰."""
+
+
+async def test_register_login_me(client):  # noqa: ANN001
+    r = await client.post(
+        "/api/auth/register",
+        json={"email": "amir@example.com", "password": "secret1234", "name": "امیر"},
+    )
+    assert r.status_code == 201
+    body = r.json()
+    assert body["email"] == "amir@example.com"
+
+    r2 = await client.post(
+        "/api/auth/login", json={"email": "amir@example.com", "password": "secret1234"}
+    )
+    assert r2.status_code == 200
+
+    r3 = await client.get("/api/auth/me")
+    assert r3.status_code == 200
+    assert r3.json()["name"] == "امیر"
+
+
+async def test_register_duplicate_email(client):  # noqa: ANN001
+    payload = {"email": "dup@example.com", "password": "secret1234", "name": "تکراری"}
+    assert (await client.post("/api/auth/register", json=payload)).status_code == 201
+    r = await client.post("/api/auth/register", json=payload)
+    assert r.status_code == 409
+    assert r.json()["code"] == "email_taken"
+
+
+async def test_login_wrong_password(client):  # noqa: ANN001
+    await client.post(
+        "/api/auth/register",
+        json={"email": "x@example.com", "password": "secret1234", "name": "ایکس"},
+    )
+    r = await client.post(
+        "/api/auth/login", json={"email": "x@example.com", "password": "wrong-pass"}
+    )
+    assert r.status_code == 401
+    assert r.json()["message_fa"]
+
+
+async def test_me_requires_auth(client):  # noqa: ANN001
+    r = await client.get("/api/auth/me")
+    assert r.status_code == 401
+
+
+async def test_logout(client):  # noqa: ANN001
+    await client.post(
+        "/api/auth/register",
+        json={"email": "l@example.com", "password": "secret1234", "name": "ال"},
+    )
+    r = await client.post("/api/auth/logout")
+    assert r.status_code == 200
+    assert (await client.get("/api/auth/me")).status_code == 401

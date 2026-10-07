@@ -1,0 +1,59 @@
+/* توکن‌های طراحی «Forge» — dark پیش‌فرض، light با [data-theme="light"] */
+:root {
+  --brand: #6d5ef5;
+  --brand-hover: #5b4de0;
+  --accent: #22d3a6;
+  --warm: #ffb84d;
+
+  --bg: #0b0c10;
+  --surface-1: #12141a;
+  --surface-2: #181b23;
+  --border: #262a35;
+  --text: #e8eaf0;
+  --text-muted: #9aa1b2;
+
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --info: #38bdf8;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-2: 0 4px 16px rgb(0 0 0 / 0.35);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  --font-sans: "Vazirmatn", system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+
+  --dur: 150ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+[data-theme="light"] {
+  --bg: #fafafb;
+  --surface-1: #ffffff;
+  --surface-2: #f2f3f6;
+  --border: #e6e8ee;
+  --text: #12141a;
+  --text-muted: #6a7284;
+
+  --shadow-1: 0 1px 2px rgb(15 18 34 / 0.06);
+  --shadow-2: 0 8px 24px rgb(15 18 34 / 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
