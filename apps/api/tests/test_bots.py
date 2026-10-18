@@ -1,7 +1,9 @@
 """تست CRUD بات‌ها."""
 
+from httpx import AsyncClient
 
-async def test_bot_crud(authed_client):  # noqa: ANN001
+
+async def test_bot_crud(authed_client: AsyncClient) -> None:
     r = await authed_client.post("/api/bots", json={"name": "بات کافه", "channel": "sandbox"})
     assert r.status_code == 201
     bot = r.json()
@@ -16,7 +18,7 @@ async def test_bot_crud(authed_client):  # noqa: ANN001
     assert (await authed_client.get(f"/api/bots/{bot['id']}")).status_code == 404
 
 
-async def test_owner_isolation(client):  # noqa: ANN001
+async def test_owner_isolation(client: AsyncClient) -> None:
     """دو کاربر نباید بات‌های همدیگر را ببینند."""
     from httpx import ASGITransport, AsyncClient
 

@@ -5,10 +5,12 @@ Revises:
 Create Date: 2026-10-06
 """
 
+from typing import Any
+
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.types import JSON
+
+from alembic import op
 
 revision = "0001"
 down_revision: str | None = None
@@ -16,7 +18,7 @@ branch_labels = None
 depends_on = None
 
 
-def _json():
+def _json() -> sa.types.TypeEngine[Any]:
     return sa.JSON().with_variant(JSONB(), "postgresql")
 
 
@@ -70,7 +72,13 @@ def upgrade() -> None:
     op.create_table(
         "builder_messages",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("session_id", sa.String(36), sa.ForeignKey("builder_sessions.id"), nullable=False, index=True),
+        sa.Column(
+            "session_id",
+            sa.String(36),
+            sa.ForeignKey("builder_sessions.id"),
+            nullable=False,
+            index=True,
+        ),
         sa.Column("role", sa.String(12), nullable=False),
         sa.Column("content", sa.Text, nullable=False),
         sa.Column("kind", sa.String(24), nullable=False),
@@ -80,7 +88,13 @@ def upgrade() -> None:
     op.create_table(
         "test_runs",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("version_id", sa.String(36), sa.ForeignKey("bot_versions.id"), nullable=False, index=True),
+        sa.Column(
+            "version_id",
+            sa.String(36),
+            sa.ForeignKey("bot_versions.id"),
+            nullable=False,
+            index=True,
+        ),
         sa.Column("status", sa.String(16), nullable=False),
         sa.Column("summary", _json(), nullable=False),
         sa.Column("started_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
@@ -90,7 +104,9 @@ def upgrade() -> None:
     op.create_table(
         "test_cases",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("run_id", sa.String(36), sa.ForeignKey("test_runs.id"), nullable=False, index=True),
+        sa.Column(
+            "run_id", sa.String(36), sa.ForeignKey("test_runs.id"), nullable=False, index=True
+        ),
         sa.Column("name", sa.String(200), nullable=False),
         sa.Column("category", sa.String(24), nullable=False),
         sa.Column("script", _json(), nullable=False),
@@ -122,12 +138,19 @@ def upgrade() -> None:
         sa.Column("phone", sa.String(20), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
-    op.create_index("ix_end_users_bot_env_platform", "end_users", ["bot_id", "env", "platform_user_id"], unique=True)
+    op.create_index(
+        "ix_end_users_bot_env_platform",
+        "end_users",
+        ["bot_id", "env", "platform_user_id"],
+        unique=True,
+    )
     op.create_table(
         "conversations",
         sa.Column("id", sa.String(36), primary_key=True),
         sa.Column("bot_id", sa.String(36), sa.ForeignKey("bots.id"), nullable=False, index=True),
-        sa.Column("end_user_id", sa.String(36), sa.ForeignKey("end_users.id"), nullable=False, index=True),
+        sa.Column(
+            "end_user_id", sa.String(36), sa.ForeignKey("end_users.id"), nullable=False, index=True
+        ),
         sa.Column("env", sa.String(10), nullable=False),
         sa.Column("state", _json(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
@@ -136,7 +159,13 @@ def upgrade() -> None:
     op.create_table(
         "messages_log",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("conversation_id", sa.String(36), sa.ForeignKey("conversations.id"), nullable=False, index=True),
+        sa.Column(
+            "conversation_id",
+            sa.String(36),
+            sa.ForeignKey("conversations.id"),
+            nullable=False,
+            index=True,
+        ),
         sa.Column("direction", sa.String(4), nullable=False),
         sa.Column("text", sa.Text, nullable=False),
         sa.Column("meta", _json(), nullable=True),
@@ -203,8 +232,21 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     for t in [
-        "jobs", "events", "llm_usage", "orders", "bookings", "messages_log", "conversations",
-        "end_users", "deployments", "test_cases", "test_runs", "builder_messages", "builder_sessions",
-        "bot_versions", "bots", "users",
+        "jobs",
+        "events",
+        "llm_usage",
+        "orders",
+        "bookings",
+        "messages_log",
+        "conversations",
+        "end_users",
+        "deployments",
+        "test_cases",
+        "test_runs",
+        "builder_messages",
+        "builder_sessions",
+        "bot_versions",
+        "bots",
+        "users",
     ]:
         op.drop_table(t)

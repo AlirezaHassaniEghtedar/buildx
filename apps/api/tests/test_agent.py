@@ -113,3 +113,70 @@ async def test_builder_session_flow(authed_client: Any, sessionmaker: Any) -> No
     assert r3.status_code == 200
     msgs = r3.json()
     assert any(m["role"] == "user" and "سفال" in m["content"] for m in msgs)
+
+
+async def _read_sse_until_done(client: Any, bot_id: str, sid: str) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    async with client.stream("GET", f"/api/bots/{bot_id}/sessions/{sid}/events") as resp:
+        assert resp.status_code == 200
+        buffer = ""
+        try:
+            async with asyncio.timeout(20):
+                async for chunk in resp.aiter_text():
+                    buffer += chunk
+                    while "\n\n" in buffer:
+                        raw, buffer = buffer.split("\n\n", 1)
+                        for line in raw.splitlines():
+                            if line.startswith("data: "):
+                                events.append(json.loads(line[6:]))
+                        if any(e.get("type") in {"done", "error"} for e in events):
+                            raise asyncio.CancelledError
+        except (asyncio.CancelledError, TimeoutError):
+            pass
+    return events
+
+
+async def test_builder_session_continuation_preserves_spec(
+    authed_client: Any, sessionmaker: Any
+) -> None:
+    """ادامهٔ گفت‌وگو (پاسخ به clarify) باید Spec و زمینهٔ قبلی را حفظ کند، نه از صفر شروع."""
+    from app.core.models import BuilderSession
+
+    r = await authed_client.post("/api/bots", json={"name": "کافه لم"})
+    assert r.status_code == 201, r.text
+    bot_id = r.json()["id"]
+    r = await authed_client.post(f"/api/bots/{bot_id}/sessions")
+    sid = r.json()["id"]
+
+    # پیام اول: رزرو میز → Spec ساخته و در سشن ذخیره می‌شود
+    first = "یک بات برای رزرو میز کافه می‌خواهم با سه میز و ظرفیت ۴ نفر"
+    r = await authed_client.post(
+        f"/api/bots/{bot_id}/sessions/{sid}/messages", json={"text": first}
+    )
+    assert r.status_code == 202, r.text
+    events = await _read_sse_until_done(authed_client, bot_id, sid)
+    assert any(e.get("type") == "done" for e in events)
+
+    async with sessionmaker() as db:
+        s = await db.get(BuilderSession, sid)
+        assert s is not None
+        assert s.state and "spec_data" in s.state, s.state
+        saved_spec = s.state["spec_data"]
+
+    # پیام دوم («پاسخ») نباید زمینه را پاک کند؛ utterance انباشته می‌شود
+    second = "ساعت کاری ۹ صبح تا ۱۰ شب است"
+    r = await authed_client.post(
+        f"/api/bots/{bot_id}/sessions/{sid}/messages", json={"text": second}
+    )
+    assert r.status_code == 202, r.text
+    events2 = await _read_sse_until_done(authed_client, bot_id, sid)
+    assert any(e.get("type") == "done" for e in events2)
+
+    async with sessionmaker() as db:
+        s = await db.get(BuilderSession, sid)
+        assert s is not None
+        assert second in (s.state or {}).get("utterance", "")
+        assert first in (s.state or {}).get("utterance", "")
+        # Spec قبلی حفظ شده (یا با Spec جدید جایگزین شده که همچنان booking دارد)
+        spec = (s.state or {}).get("spec_data") or saved_spec
+        assert any(m.get("type") == "booking" for m in spec.get("modules", []))

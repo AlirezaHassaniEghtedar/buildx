@@ -1,5 +1,7 @@
 """تست جریان‌های Runtime با store جعلی (بدون دیتابیس)."""
 
+from typing import Any
+
 from app.runtime.engine import RuntimeEngine, is_valid_iranian_phone
 from app.runtime.state import NormalizedUpdate, StateMachine
 from tests.fixtures import pottery_spec
@@ -8,12 +10,12 @@ from tests.fixtures import pottery_spec
 class FakeStore:
     def __init__(self, capacity_left: int = 2) -> None:
         self.capacity_left = capacity_left
-        self.bookings: list[dict] = []
-        self.waitlist: list[dict] = []
-        self.orders: list[dict] = []
+        self.bookings: list[dict[str, Any]] = []
+        self.waitlist: list[dict[str, Any]] = []
+        self.orders: list[dict[str, Any]] = []
         self.cancelled = 0
 
-    async def create_booking(self, **kw: object) -> dict:
+    async def create_booking(self, **kw: object) -> dict[str, Any]:
         if self.capacity_left > 0:
             self.capacity_left -= 1
             self.bookings.append(kw)
@@ -37,7 +39,7 @@ def msg(text: str) -> NormalizedUpdate:
     return NormalizedUpdate(platform_user_id="u1", chat_id="c1", text=text)
 
 
-async def test_start_welcome():
+async def test_start_welcome() -> None:
     engine = RuntimeEngine()
     out, state = await engine.handle_update(
         pottery_spec().model_dump(), StateMachine(), msg("/start")
@@ -46,7 +48,7 @@ async def test_start_welcome():
     assert state.step == "idle"
 
 
-async def test_happy_booking_flow():
+async def test_happy_booking_flow() -> None:
     engine = RuntimeEngine()
     store = FakeStore(capacity_left=2)
     state = StateMachine()
@@ -62,7 +64,7 @@ async def test_happy_booking_flow():
     assert any("تأیید شد" in o.text for o in out)
 
 
-async def test_invalid_phone_rejected():
+async def test_invalid_phone_rejected() -> None:
     engine = RuntimeEngine()
     store = FakeStore()
     state = StateMachine()
@@ -78,7 +80,7 @@ async def test_invalid_phone_rejected():
     assert "phone" not in state.fields
 
 
-async def test_capacity_full_offer_waitlist():
+async def test_capacity_full_offer_waitlist() -> None:
     engine = RuntimeEngine()
     store = FakeStore(capacity_left=0)
     state = StateMachine()
@@ -95,7 +97,7 @@ async def test_capacity_full_offer_waitlist():
     assert any("لیست انتظار" in o.text for o in out)
 
 
-async def test_cancel_flow():
+async def test_cancel_flow() -> None:
     engine = RuntimeEngine()
     store = FakeStore()
     state = StateMachine()
@@ -107,7 +109,7 @@ async def test_cancel_flow():
     assert store.cancelled == 1
 
 
-async def test_faq_answer():
+async def test_faq_answer() -> None:
     engine = RuntimeEngine()
     state = StateMachine()
     spec = pottery_spec().model_dump()
@@ -116,7 +118,7 @@ async def test_faq_answer():
     assert any("آزادی" in o.text for o in out)
 
 
-async def test_phone_validator():
+async def test_phone_validator() -> None:
     assert is_valid_iranian_phone("09123456789")
     assert is_valid_iranian_phone("۰۹۱۲۳۴۵۶۷۸۹")
     assert is_valid_iranian_phone("+989123456789")

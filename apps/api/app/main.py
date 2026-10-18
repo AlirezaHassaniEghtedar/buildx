@@ -5,9 +5,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, RedirectResponse
+from sqlalchemy import text
 
 from app.core.config import get_settings
-from app.core.db import get_sessionmaker
+from app.core.db import get_sessionmaker as get_sessionmaker
 from app.core.errors import ApiError, error_response, unhandled_handler
 from app.core.logging import setup_logging
 
@@ -69,3 +71,27 @@ app.include_router(webhook_router)
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/health")
+async def health(request: Request) -> JSONResponse:
+    """وضعیت سرویس و اتصال دیتابیس — برای healthcheck داکر و تست دستی (بدون auth)."""
+    db_ok = True
+    try:
+        session = request.state.db
+        await session.execute(text("SELECT 1"))
+    except Exception:
+        db_ok = False
+    return JSONResponse(
+        status_code=200 if db_ok else 503,
+        content={
+            "status": "ok" if db_ok else "degraded",
+            "service": "botforge-api",
+            "database": "ok" if db_ok else "error",
+        },
+    )
+
+
+@app.get("/")
+async def root() -> RedirectResponse:
+    return RedirectResponse(url="/docs")

@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.graph import build_graph, initial_state
 from app.core.db import get_db
+from app.core.db import get_sessionmaker as get_sessionmaker
 from app.core.deps import CurrentUser
 from app.core.errors import ApiError
 from app.core.models import Bot, BuilderMessage, BuilderSession, MessageKind, SessionMode
@@ -150,6 +151,19 @@ async def list_messages(
     ]
 
 
+async def _save_session_state(session_id: str, patch: dict[str, Any]) -> None:
+    """ادامهٔ گفت‌وگو: زمینهٔ گراف (utterance انباشته و Spec) را در سشن ذخیره می‌کند."""
+    try:
+        sessionmaker = get_sessionmaker()
+        async with sessionmaker() as db:
+            s = await db.get(BuilderSession, session_id)
+            if s is not None:
+                s.state = {**(s.state or {}), **patch}
+                await db.commit()
+    except Exception:  # noqa: BLE001 — ذخیرهٔ زمینه نباید گفت‌وگو را متوقف کند
+        pass
+
+
 async def _run_graph(
     session_id: str, utterance: str, bot_name: str, seed_state: dict[str, Any] | None
 ) -> dict[str, Any]:
@@ -160,10 +174,17 @@ async def _run_graph(
         # ادامهٔ سشن: utterance جدید، بقیهٔ state حفظ می‌شود
         for k, v in seed_state.items():
             state[k] = v  # type: ignore[literal-required]
+        # زمینهٔ قبلی + پاسخ جدید، تا Spec از کل گفت‌وگو ساخته شود نه فقط آخرین جمله
+        utterance = f"{seed_state.get('utterance', '')}\n\nپاسخ کاربر: {utterance}".strip()
         state["utterance"] = utterance
     final: dict[str, Any] = await graph.ainvoke(state)
     for e in final.get("events", []):
         _push(session_id, {"type": "step", **e})
+    # ذخیرهٔ زمینه قبل از done تا ادامهٔ گفت‌وگو (clarify/modify) Spec را حفظ کند
+    patch: dict[str, Any] = {"utterance": utterance}
+    if final.get("spec_data"):
+        patch["spec_data"] = final["spec_data"]
+    await _save_session_state(session_id, patch)
     _push(session_id, {"type": "done", "step": final.get("step", "")})
     return final
 

@@ -10,12 +10,12 @@ class Out(BaseModel):
     ok: bool
 
 
-def test_pricing_defaults():
+def test_pricing_defaults() -> None:
     assert price_for("unknown-model").input > 0
     assert cost_usd("gpt-4o-mini", 1_000_000, 1_000_000) == round(0.15 + 0.6, 6)
 
 
-async def test_mock_client_structured():
+async def test_mock_client_structured() -> None:
     client = MockLlmClient()
     client.set_response("build", {"ok": True})
     resp = await client.complete(
@@ -26,7 +26,7 @@ async def test_mock_client_structured():
     assert resp.cost_usd == 0.0
 
 
-async def test_mock_client_plain():
+async def test_mock_client_plain() -> None:
     client = MockLlmClient()
     resp = await client.complete([{"role": "user", "content": "سلام"}], purpose="nlu")
     assert resp.data is None

@@ -6,8 +6,13 @@
 
 import asyncio
 import os
+from collections.abc import AsyncIterator
+from typing import Any
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.runtime.store import RuntimeStore
 
 PG_URL = os.environ.get("DATABASE_URL_TEST_PG", "")
 HAS_PG = PG_URL.startswith("postgresql")
@@ -18,8 +23,9 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.fixture
-async def pg_sessionmaker():
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+async def pg_sessionmaker() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    from sqlalchemy.ext.asyncio import async_sessionmaker as _asm
+    from sqlalchemy.ext.asyncio import create_async_engine
 
     from app.core.models import Base
 
@@ -27,20 +33,19 @@ async def pg_sessionmaker():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
-    yield async_sessionmaker(engine, expire_on_commit=False)
+    yield _asm(engine, expire_on_commit=False)
     await engine.dispose()
 
 
-async def test_capacity_race(pg_sessionmaker):  # noqa: ANN001
+async def test_capacity_race(pg_sessionmaker: async_sessionmaker[AsyncSession]) -> None:
     from sqlalchemy import select
 
     from app.core.models import Booking, BookingStatus, EndUser
-    from app.runtime.store import RuntimeStore
     from tests.fixtures import CAPACITY, N_USERS
 
     capacity, n_users = CAPACITY, N_USERS
 
-    async def run_user(i: int) -> dict:
+    async def run_user(i: int) -> dict[str, Any]:
         async with pg_sessionmaker() as db:
             user = EndUser(
                 bot_id="b1", env="live", platform_user_id=f"u{i}", display_name=f"کاربر {i}"
@@ -80,13 +85,14 @@ async def test_capacity_race(pg_sessionmaker):  # noqa: ANN001
         assert len(rows) == capacity
 
 
-async def test_cancel_promotes_first_waitlisted(pg_sessionmaker):  # noqa: ANN001
+async def test_cancel_promotes_first_waitlisted(
+    pg_sessionmaker: async_sessionmaker[AsyncSession],
+) -> None:
     from sqlalchemy import select
 
     from app.core.models import Booking, BookingStatus, EndUser
-    from app.runtime.store import RuntimeStore
 
-    async def make_store(i: int):
+    async def make_store(i: int) -> RuntimeStore:
         async with pg_sessionmaker() as db:
             user = EndUser(bot_id="b1", env="live", platform_user_id=f"u{i}")
             db.add(user)

@@ -10,22 +10,22 @@ from app.spec.validators import validate_spec
 from tests.fixtures import pottery_spec
 
 
-def test_valid_spec_passes():
+def test_valid_spec_passes() -> None:
     spec = pottery_spec()
     assert validate_spec(spec) == []
     assert missing_fields(spec) == []
 
 
-def test_duplicate_item_ids_rejected():
+def test_duplicate_item_ids_rejected() -> None:
     spec = pottery_spec()
-    spec.modules[0].items.append(
-        BookableItem(id="pottery_class", title="کلاس دوم", capacity=5)  # type: ignore[index]
-    )
+    booking = spec.modules[0]
+    assert isinstance(booking, BookingModule)
+    booking.items.append(BookableItem(id="pottery_class", title="کلاس دوم", capacity=5))
     issues = validate_spec(spec)
     assert any("تکراری" in i.message_fa for i in issues)
 
 
-def test_waitlist_limit_without_waitlist_flagged():
+def test_waitlist_limit_without_waitlist_flagged() -> None:
     spec = pottery_spec(waitlist=False)
     booking = spec.modules[0]
     assert isinstance(booking, BookingModule)
@@ -34,26 +34,26 @@ def test_waitlist_limit_without_waitlist_flagged():
     assert any("لیست انتظار" in i.message_fa for i in issues)
 
 
-def test_capacity_must_be_positive():
+def test_capacity_must_be_positive() -> None:
     with pytest.raises(ValidationError):
         BookableItem(id="x", title="کلاس", capacity=0)
 
 
-def test_iranian_phone_field_shape():
+def test_iranian_phone_field_shape() -> None:
     spec = pottery_spec()
     booking = spec.modules[0]
     assert isinstance(booking, BookingModule)
     assert booking.collect_fields[1].type == "phone"
 
 
-def test_missing_name_questioned():
+def test_missing_name_questioned() -> None:
     spec = pottery_spec()
     spec.meta.name = ""
     fields = missing_fields(spec)
     assert fields and fields[0].path == "meta.name"
 
 
-def test_diff_and_apply_roundtrip():
+def test_diff_and_apply_roundtrip() -> None:
     old = pottery_spec(capacity=10)
     new = pottery_spec(capacity=20)
     new.meta.welcome_message = "خوش آمدی!"
@@ -68,7 +68,7 @@ def test_diff_and_apply_roundtrip():
     assert rebuilt.modules[0].items[0].capacity == 20
 
 
-def test_tone_change_humanized():
+def test_tone_change_humanized() -> None:
     old = pottery_spec()
     new = pottery_spec()
     new.meta.tone = "formal"
@@ -76,6 +76,6 @@ def test_tone_change_humanized():
     assert any("رسمی" in line for line in lines)
 
 
-def test_schema_version_default():
+def test_schema_version_default() -> None:
     spec = BotSpec(meta=Meta(name="بات"))
     assert spec.schema_version == "1.0"

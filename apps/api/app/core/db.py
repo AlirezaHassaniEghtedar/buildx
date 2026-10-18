@@ -18,10 +18,13 @@ _sessionmaker: async_sessionmaker[AsyncSession] | None = None
 
 
 def _make_engine() -> AsyncEngine:
-    url = os.getenv("DATABASE_URL") or get_settings().database_url
+    settings = get_settings()
+    url = os.getenv("DATABASE_URL") or settings.database_url
     if url.startswith("sqlite"):
-        return create_async_engine(url, connect_args={"check_same_thread": False})
-    return create_async_engine(url, pool_pre_ping=True)
+        return create_async_engine(
+            url, connect_args={"check_same_thread": False}, echo=settings.sql_echo
+        )
+    return create_async_engine(url, pool_pre_ping=True, echo=settings.sql_echo)
 
 
 def get_engine() -> AsyncEngine:

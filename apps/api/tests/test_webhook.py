@@ -45,7 +45,7 @@ async def _seed(sessionmaker: Any) -> Deployment:
         refreshed = (
             await db.execute(select(Deployment).where(Deployment.id == dep.id))
         ).scalar_one()
-        assert refreshed.id is not None
+        assert isinstance(refreshed, Deployment)
         return refreshed
 
 

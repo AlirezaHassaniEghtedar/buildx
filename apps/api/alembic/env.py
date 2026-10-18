@@ -4,8 +4,8 @@ import asyncio
 from logging.config import fileConfig
 
 import sqlalchemy as sa
-from alembic import context
 
+from alembic import context
 from app.core.config import get_settings
 from app.core.models import Base
 
@@ -18,7 +18,9 @@ target_metadata = Base.metadata
 
 def _sync_url() -> str:
     url = get_settings().database_url
-    return url.replace("postgresql+asyncpg://", "postgresql+psycopg://").replace("sqlite+aiosqlite://", "sqlite")
+    return url.replace("postgresql+asyncpg://", "postgresql+psycopg://").replace(
+        "sqlite+aiosqlite://", "sqlite"
+    )
 
 
 def run_migrations_offline() -> None:
@@ -27,7 +29,7 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def do_run_migrations(connection) -> None:  # noqa: ANN001
+def do_run_migrations(connection: sa.Connection) -> None:
     context.configure(connection=connection, target_metadata=target_metadata)
     with context.begin_transaction():
         context.run_migrations()

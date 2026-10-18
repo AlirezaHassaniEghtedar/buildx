@@ -4,7 +4,7 @@ import secrets
 
 from fastapi import APIRouter, Request
 
-from app.core.db import get_sessionmaker
+from app.core.db import get_sessionmaker as get_sessionmaker
 from app.core.logging import get_logger
 from app.core.models import Deployment
 from app.core.security import decrypt_secret
