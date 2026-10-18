@@ -4,9 +4,16 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   api:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: apps/api
@@ -24,16 +31,52 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     env:
-      DATABASE_URL: postgresql+asyncpg://botforge:botforge@localhost:5432/botforge
-      SECRET_KEY: ci-secret-key-ci-secret-key
+      # حداقل ۳۲ بایت؛ مقدار قبلی ۲۷ بایت بود و باعث ValidationError می‌شد
+      SECRET_KEY: ci-secret-key-0123456789-abcdefghijklmnop
       FERNET_KEY: ""
+      # alembic upgrade head روی دیتابیس اصلی
+      DATABASE_URL: postgresql+asyncpg://botforge:botforge@localhost:5432/botforge
+      # تست‌های concurrency روی دیتابیس جدا تا schema مهاجرت‌شده را drop_all نکنند
+      DATABASE_URL_TEST_PG: postgresql+asyncpg://botforge:botforge@localhost:5432/botforge_test
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/pyproject.toml
       - run: pip install -e ".[dev]"
+      - name: Create test database
+        run: |
+          PGPASSWORD=botforge psql -h localhost -U botforge -d botforge \
+            -c "CREATE DATABASE botforge_test;" || true
       - run: ruff check app tests
       - run: ruff format --check app tests
       - run: mypy app
+      - run: alembic upgrade head
       - run: pytest -q
+
+  web:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run build
+
+  docker:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build api image
+        run: docker build -f deploy/api.Dockerfile -t botforge-api .
+      - name: Build web image
+        run: docker build -f deploy/web.Dockerfile -t botforge-web .
