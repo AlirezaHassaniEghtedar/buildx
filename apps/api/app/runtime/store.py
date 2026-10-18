@@ -1,12 +1,16 @@
 """عملیات جانبی Runtime روی دیتابیس — concurrency-safe طبق سند.
 
-create_booking: شمارش رزروهای فعال با SELECT ... FOR UPDATE (Postgres)؛ در SQLite fallback.
+create_booking: روی Postgres با `pg_advisory_xact_lock` روی کلید item قفل می‌گیریم (نه
+`SKIP LOCKED` که ردیف‌های قفل‌شده را از شمارش خارج می‌کرد و باعث overbooking می‌شد)؛ قفل تا
+پایان تراکنش نگه داشته می‌شود پس شمارش و درج سریالایز می‌شوند. روی SQLite (dev) از یک
+`asyncio.Lock` درون‌پروسه‌ای per-item استفاده می‌شود (محدودیت dev مستند شده).
 اگر ظرفیت پر بود → لیست انتظار با نوبت؛ اگر جا باز شد → ارتقای خودکار نفر اول.
 """
 
+import asyncio
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.models import (
@@ -19,6 +23,18 @@ from app.core.models import (
     Order,
     OrderStatus,
 )
+
+# قفل‌های درون‌پروسه‌ای برای SQLite (dev) — کلید: (bot_id, env, item_id)
+_sqlite_locks: dict[tuple[str, str, str], asyncio.Lock] = {}
+
+
+def _item_lock(bot_id: str, env: str, item_id: str) -> asyncio.Lock:
+    key = (bot_id, env, item_id)
+    lock = _sqlite_locks.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _sqlite_locks[key] = lock
+    return lock
 
 
 class RuntimeStore:
@@ -40,26 +56,48 @@ class RuntimeStore:
         waitlist_enabled: bool,
         waitlist_limit: int | None,
     ) -> dict[str, Any]:
-        # قفل ردیف‌های مربوط به این item برای جلوگیری از race
         backend = getattr(getattr(self.db, "bind", None), "url", None)
         is_pg = backend is not None and backend.get_backend_name() == "postgresql"
 
-        count_stmt = (
-            select(Booking)
-            .where(
-                Booking.bot_id == self.bot_id,
-                Booking.env == self.env,
-                Booking.item_id == item_id,
-                Booking.status == BookingStatus.confirmed,
+        if is_pg:
+            # قفل سراسری روی کلید item تا پایان تراکنش — شمارش و درج سریالایز می‌شوند
+            await self.db.execute(
+                text("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))"),
+                {"k": f"booking:{self.bot_id}:{self.env}:{item_id}"},
             )
-            .with_for_update(skip_locked=True)
-            if is_pg
-            else select(Booking).where(
-                Booking.bot_id == self.bot_id,
-                Booking.env == self.env,
-                Booking.item_id == item_id,
-                Booking.status == BookingStatus.confirmed,
+            return await self._create_booking_impl(
+                item_id=item_id,
+                fields=fields,
+                capacity=capacity,
+                waitlist_enabled=waitlist_enabled,
+                waitlist_limit=waitlist_limit,
             )
+
+        # SQLite (dev): قفل درون‌پروسه‌ای per-item
+        async with _item_lock(self.bot_id, self.env, item_id):
+            return await self._create_booking_impl(
+                item_id=item_id,
+                fields=fields,
+                capacity=capacity,
+                waitlist_enabled=waitlist_enabled,
+                waitlist_limit=waitlist_limit,
+            )
+
+    async def _create_booking_impl(
+        self,
+        *,
+        item_id: str,
+        fields: dict[str, Any],
+        capacity: int,
+        waitlist_enabled: bool,
+        waitlist_limit: int | None,
+    ) -> dict[str, Any]:
+        # شمارش سادهٔ رزروهای فعال (قفل قبلاً گرفته شده؛ نیازی به FOR UPDATE نیست)
+        count_stmt = select(Booking).where(
+            Booking.bot_id == self.bot_id,
+            Booking.env == self.env,
+            Booking.item_id == item_id,
+            Booking.status == BookingStatus.confirmed,
         )
         active = (await self.db.execute(count_stmt)).scalars().all()
 
@@ -113,8 +151,11 @@ class RuntimeStore:
         return {"status": "waitlisted", "position": booking.position}
 
     async def promote_waitlist(self, item_id: str) -> str | None:
-        """پس از لغو، نفر اول لیست انتظار را تأیید می‌کند. end_user_id برمی‌گردد."""
-        wl = (
+        """پس از لغو، نفر اول لیست انتظار را تأیید و position باقی‌مانده‌ها را renumber می‌کند.
+
+        end_user_id کاربر ارتقایافته برمی‌گردد (برای ارسال پیام «جا باز شد» به خودش).
+        """
+        wl_rows = (
             (
                 await self.db.execute(
                     select(Booking)
@@ -124,20 +165,24 @@ class RuntimeStore:
                         Booking.item_id == item_id,
                         Booking.status == BookingStatus.waitlisted,
                     )
-                    .order_by(Booking.position)
+                    .order_by(Booking.position, Booking.created_at)
                 )
             )
             .scalars()
-            .first()
+            .all()
         )
-        if wl is None:
+        if not wl_rows:
             return None
-        wl.status = BookingStatus.confirmed
-        wl.position = None
+        promoted = wl_rows[0]
+        promoted.status = BookingStatus.confirmed
+        promoted.position = None
+        # renumber باقی‌مانده‌ها تا position تکراری پیش نیاید
+        for idx, row in enumerate(wl_rows[1:], start=1):
+            row.position = idx
         self.db.add(
             Event(bot_id=self.bot_id, type="waitlist_promoted", payload={"item_id": item_id})
         )
-        return wl.end_user_id
+        return promoted.end_user_id
 
     async def cancel_latest_booking(self, *, item_id: str | None = None) -> bool:
         stmt = (
