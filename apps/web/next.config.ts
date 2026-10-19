@@ -1,8 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // خروجی standalone برای ایمیج سبک داکر (بدون node_modules کامل)
-  output: "standalone",
+  // standalone فقط برای بیلد داکر (BUILD_STANDALONE=1 در web.Dockerfile).
+  // R20: بیلد محلی روی ویندوز بدون Developer Mode ممکن است با EPERM symlink بشکند.
+  ...(process.env.BUILD_STANDALONE === "1" ? { output: "standalone" as const } : {}),
   async rewrites() {
     const api = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
     return [

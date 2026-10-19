@@ -9,7 +9,8 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY apps/web ./
 ARG NEXT_PUBLIC_API_BASE_URL=
-ENV NEXT_TELEMETRY_DISABLED=1
+# standalone فقط داخل داکر (next.config.ts شرطی شده — R20)
+ENV NEXT_TELEMETRY_DISABLED=1 BUILD_STANDALONE=1
 RUN npm run build
 
 # ایمیج نهایی: standalone (بدون node_modules کامل) + static + public
