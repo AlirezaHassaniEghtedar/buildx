@@ -119,8 +119,7 @@ async def test_all_models_insert_and_read_on_migrated_schema(migrated_env):  # n
         await db.commit()
 
         directions = [
-            m.direction.value
-            for m in (await db.execute(select(MessagesLog))).scalars().all()
+            m.direction.value for m in (await db.execute(select(MessagesLog))).scalars().all()
         ]
         assert sorted(directions) == ["in", "out"]
         assert (await db.execute(select(Booking))).scalars().one().item_id == "pottery_class"
