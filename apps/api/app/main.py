@@ -4,6 +4,7 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import text
@@ -50,6 +51,33 @@ async def db_session_middleware(
 @app.exception_handler(ApiError)
 async def _api_error(request: Request, exc: ApiError) -> Response:
     return error_response(exc.code, exc.message_fa, exc.status, exc.details)
+
+
+# نام فیلدهای رایج API به فارسی — برای پیام خطای قابل‌فهم کاربر (کلید فنی در details می‌ماند)
+_FIELD_FA = {
+    "email": "ایمیل",
+    "password": "رمز عبور",
+    "name": "نام",
+    "title": "عنوان",
+}
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_error(request: Request, exc: RequestValidationError) -> Response:  # noqa: ARG001
+    """B7: خطای اعتبارسنجی FastAPI هم باید پاکت فارسی {code, message_fa, details} باشد."""
+    fields: list[str] = []
+    for e in exc.errors():
+        loc = [str(x) for x in e.get("loc", ()) if x != "body"]
+        if loc:
+            fields.append(".".join(loc))
+    uniq = list(dict.fromkeys(fields))
+    names = "، ".join(_FIELD_FA.get(f, f) for f in uniq) if uniq else "بدنهٔ درخواست"
+    return error_response(
+        "validation_error",
+        f"اطلاعات ارسالی معتبر نیست (فیلد: {names})؛ لطفاً مقادیر را بررسی کنید.",
+        422,
+        {"fields": uniq},
+    )
 
 
 @app.exception_handler(Exception)

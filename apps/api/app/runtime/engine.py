@@ -5,6 +5,7 @@ engine.handle_update(bot_version_spec, conversation_state, incoming, env)
 قواعد سند: Intent-آزاد فقط ۳ حالت (NLU، FAQ fallback، استخراج فیلد)؛ دکمه/دستور = قطعی.
 """
 
+import re
 from typing import Any
 
 from app.runtime.i18n_fa import Texts
@@ -29,6 +30,20 @@ def is_valid_iranian_phone(s: str) -> bool:
 
 def _fmt_total(total: float) -> str:
     return f"{int(total):,}".replace(",", "،")
+
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
+
+
+def _is_valid_email(s: str) -> bool:
+    """اعتبارسنجی ایمیل ساده — جزئیات بیشتر را Provider ایمیل بررسی می‌کند."""
+    return bool(_EMAIL_RE.match(s.strip()))
+
+
+def _is_number(s: str) -> bool:
+    """آیا رشته (بعد از تبدیل ارقام فارسی) عدد است؟ اعشار مجاز، منفی نه."""
+    s = s.strip()
+    return bool(s) and s.replace(".", "", 1).isdigit()
 
 
 class RuntimeEngine:
@@ -72,6 +87,36 @@ class RuntimeEngine:
             llm=self.llm,
             llm_allowed=state.llm_calls < parsed.guardrails.max_llm_calls_per_conversation,
         )
+
+        in_flow = state.flow in {"booking", "ordering"} and state.step in {
+            "choose_item",
+            "collect",
+            "confirm",
+            "cart",
+        }
+        # فقط متنِ تایپشده؛ دکمه (callback_data) عمداً flow را عوض می‌کند
+        typed = bool(incoming.text) and incoming.callback_data is None
+
+        # «لغو» همیشه اول — حتی وسط flow — چون کاربر می‌خواهد از روند خارج شود
+        if intent.name == "cancel":
+            if in_flow:
+                out.append(
+                    OutgoingMessage(
+                        text="انجام شد؛ از روند خارج شدم. هر وقت خواستی دوباره شروع کن."
+                    )
+                )
+                return out, StateMachine()
+            return await self._cancel_flow(parsed, state, texts, out, store, env)
+
+        # وسط flow، متنِ تایپشده پاسخِ همان مرحله است؛ کلیدواژه‌ها flow را قاپ نمی‌زنند
+        if in_flow and typed:
+            if state.flow == "booking":
+                return await self._booking_flow(
+                    parsed, state, incoming, Intent(name="unknown"), texts, out, store, env
+                )
+            return await self._ordering_flow(
+                parsed, state, incoming, Intent(name="unknown"), texts, out, store, env
+            )
 
         if intent.name == "menu":
             state.flow = self._flow_for_button(parsed, intent.slots.get("button", ""))
@@ -117,9 +162,6 @@ class RuntimeEngine:
             return await self._ordering_flow(
                 parsed, state, incoming, intent, texts, out, store, env
             )
-
-        if intent.name == "cancel":
-            return await self._cancel_flow(parsed, state, texts, out, store, env)
 
         out.append(OutgoingMessage(text=parsed.meta.fallback_message))
         return out, state
@@ -168,6 +210,15 @@ class RuntimeEngine:
                 if f.type == "phone" and not is_valid_iranian_phone(value):
                     out.append(OutgoingMessage(text=texts.t("bad_phone")))
                     return out, state
+                if f.type == "email" and not _is_valid_email(value):
+                    out.append(OutgoingMessage(text=texts.t("bad_email")))
+                    return out, state
+                if f.type == "number":
+                    num = _to_en_digits(value).strip()
+                    if not _is_number(num):
+                        out.append(OutgoingMessage(text=texts.t("bad_number")))
+                        return out, state
+                    value = num
                 if f.type == "choice" and f.choices and value not in f.choices:
                     out.append(OutgoingMessage(text=texts.t("bad_choice")))
                     return out, state
@@ -240,7 +291,11 @@ class RuntimeEngine:
         keyboard: list[list[str]] = []
         if f.type == "choice" and f.choices:
             keyboard = self._chunks(f.choices, 2)
-        out.append(OutgoingMessage(text=texts.t("ask_field", label=f.label), keyboard=keyboard))
+        out.append(
+            OutgoingMessage(
+                text=texts.t("ask_field", type=f.type, label=f.label), keyboard=keyboard
+            )
+        )
         return out, state
 
     # ── ordering ─────────────────────────────────────────

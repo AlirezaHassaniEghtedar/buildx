@@ -55,3 +55,17 @@ async def test_logout(client: AsyncClient) -> None:
     r = await client.post("/api/auth/logout")
     assert r.status_code == 200
     assert (await client.get("/api/auth/me")).status_code == 401
+
+
+async def test_validation_error_is_persian(client: AsyncClient) -> None:
+    """B7: خطای 422 باید پاکت فارسی {code, message_fa, details} باشد، نه detail انگلیسی."""
+    r = await client.post(
+        "/api/auth/register",
+        json={"email": "not-an-email", "password": "secret1234", "name": "نامعتبر"},
+    )
+    assert r.status_code == 422
+    body = r.json()
+    assert body["code"] == "validation_error"
+    assert "ایمیل" in body["message_fa"]
+    assert body["details"]["fields"] == ["email"]
+    assert "detail" not in body

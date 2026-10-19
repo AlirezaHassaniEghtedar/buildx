@@ -42,6 +42,11 @@ class Texts(BaseModel):
     tone: str = "friendly"
 
     def t(self, key: str, **kwargs: object) -> str:
+        # سؤال فیلد بسته به نوعش متن متفاوت دارد (ASK_FIELD)
+        if key == "ask_field":
+            kind = str(kwargs.get("type", "text"))
+            template = ASK_FIELD.get(kind, ASK_FIELD["text"])
+            return template.format(**kwargs)
         table: dict[str, str] = {
             "ask_name": ASK_NAME,
             "ask_phone": ASK_PHONE,

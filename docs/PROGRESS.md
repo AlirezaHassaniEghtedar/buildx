@@ -1,6 +1,6 @@
 # PROGRESS
 
-> هر فاز: وضعیت، برنامه کوتاه، پذیرش، و مشکلات روزبه‌روز. آخرین به‌روزرسانی: ۱۴۰۵/۰۷/۱۵ (۲۰۲۶-۱۰-۰۷)
+> هر فاز: وضعیت، برنامه کوتاه، پذیرش، و مشکلات روزبه‌روز. آخرین به‌روزرسانی: ۱۴۰۵/۰۷/۲۸ (۲۰۲۶-۱۰-۱۹)
 
 ## فاز ۰ — اسکلت ✅ (تمام)
 
@@ -31,8 +31,9 @@ Runtime عمومی (booking با قفل ردیف و لیست انتظار، orde
 
 **پذیرش فاز ۱:** ✅
 - با Spec دستی (fixture سفالگری) کل چرخهٔ رزرو در Runtime پاس می‌شود: تست‌های `test_runtime.py` (۷ تست).
-- concurrency (۵۰↔۱۰): `test_concurrency.py` — ۲ تست با Postgres شرطی؛ روی این ماشین اجرا نشده
-  (DATABASE_URL_TEST_PG لازم است) — به‌عنوان limitation گزارش می‌شود، نه pass.
+- concurrency (۵۰↔۱۰): `test_concurrency.py` — ۲ تست روی Postgres واقعی. از شاخهٔ
+  `fix/ci-and-hardening`: در CI اجرا می‌شوند (سرویس postgres:16 + DATABASE_URL_TEST_PG)
+  و بدون env تست fail می‌شوند نه skip. قفل با `pg_advisory_xact_lock` (B1 رفع شد).
 - webhook واقعی وصل شد: `POST /webhook/{deployment_id}/{secret}` → ۲۰۰ سریع + پردازش پس‌زمینه؛
   تست‌های `test_webhook.py` (۴ تست): ردِ secret غلط، deployment ناشناس، ترنسکریپت Sandbox،
   چرخهٔ کامل /start تا پیام خوش‌آمد + EndUser/Conversation/MessagesLog.
@@ -40,7 +41,7 @@ Runtime عمومی (booking با قفل ردیف و لیست انتظار، orde
 - `make eval` → `app/agent/eval.py`: ۶/۶ مورد موفق (MockLLM قطعی، هزینهٔ $0.0000).
 - `make smoke` → `app/testing/smoke.py`: روی uvicorn واقعی سبز (healthz، register+کوکی HttpOnly،
   /api/bots، ردِ webhook غلط).
-- کیفیت: `ruff` ✅ | `mypy --strict` ✅ (۴۲ فایل) | `pytest` **۳۱ passed / 2 skipped** ✅
+- کیفیت (۱۴۰۵/۰۷/۲۸): `ruff` ✅ | `mypy --strict` ✅ (۴۶ فایل) | `pytest` **۵۴ passed / 0 skipped** ✅
 
 **مشکلات و درس‌های فاز ۱:**
 - ناسازگاری قرارداد store/engine پیدا و رفع شد: engine به store با `bot_id=`/`env=` صدا می‌زد
@@ -70,14 +71,39 @@ BuilderSession/BuilderMessage روی دیتابیس، SSE برای استودی�
 - **E2E روی سرور واقعی (uvicorn+curl):** register→create bot→session→message→
   SSE تا `done`: همهٔ مراحل step_started→spec_ready→ok→tests_ready→tests_done→
   awaiting_confirmation→done سبز.
-- کیفیت: `ruff` ✅ | `mypy --strict` ✅ (۴۶ فایل) | `pytest` **۳۶ passed / 2 skipped** ✅
-  (۵ تست جدید فاز ۲: شبیه‌ساز ۲، گراف ۲، SSE ۱)
+- کیفیت (۱۴۰۵/۰۷/۲۸): `ruff` ✅ | `mypy --strict` ✅ | `pytest` **۵۴ passed / 0 skipped** ✅
+  (شامل ۲ تست concurrency و ۲ تست مهاجرت روی Postgres واقعی)
 
 **مشکلات و درس‌های فاز ۲:**
 - ASGITransport درخواست SSE را تا کامل‌شدن پاسخ باز نگه می‌دارد؛ تست SSE ترتیب «اول POST
   پیام، بعد خواندن استریم» را می‌گیرد (صف، رویدادهای قبلی را replay می‌کند).
 - chunkهای `astream` دلتای هر node هستند (کلیید = نام node) نه state انباشته.
 - `state.update(seed)` روی TypedDict در mypy strict ممنوع؛ با حلقهٔ `state[k] = v` حل شد.
+
+## فاز A/B — تثبیت CI و رفع باگ‌های بحرانی ✅ (شاخهٔ `fix/ci-and-hardening`)
+
+**فاز A — CI قرمز → سبز** (run 39331431774: api ✅ web ✅ docker ✅):
+- `ci.yml`: `SECRET_KEY` حداقل ۳۲ بایت + سرویس `postgres:16-alpine` + ست‌کردن `DATABASE_URL_TEST_PG`.
+- `conftest.py`: قطعی‌کردن `os.environ["SECRET_KEY"]` به‌جای setdefault (کلید ضعیف CI بر تست‌ها غلبه می‌کرد).
+- حذف `pytest.ini` ریشه (بی‌اثر بود؛ CI از `apps/api/pyproject.toml` می‌خواند).
+
+**رفع باگ‌ها (تست قرمز قبل از فیکس):**
+
+| باگ | فیکس | تست |
+|-----|------|-----|
+| B1 — Overbooking همزمان (skip_locked) | `pg_advisory_xact_lock` روی کلید آیتم در `RuntimeStore.create_booking` | `test_concurrency.py` (۵۰↔۱۰ → دقیقاً ۱۰ و ۲۵) روی PG واقعی، اجرا در CI |
+| B2 — تست‌های concurrency skip و خراب | ساخت Bot واقعی در تست + fail (نه skip) اگر در CI env نباشد | همان ۲ تست، در CI سبز |
+| B3 — direction اسکیما VARCHAR(4) ↔ enum اسمی | مهاجرت `0002`: تبدیل امن دادهٔ قدیمی + مدل enum حالا مقدار (value) را ذخیره می‌کند | `test_migrations.py` + درج واقعی MessagesLog روی PG مهاجرت‌شده |
+| B4 — همهٔ سؤال‌های فیلد «متوجه نشدم» | کلید `ask_field` در `Texts.t` با متنِ نوع فیلد؛ اعتبارسنجی email/number فعال شد | `test_ask_field_uses_label_not_unknown`, `test_bad_email_rejected_then_accepted`, `test_bad_number_rejected_then_accepted` |
+| B5 — NLU قاپیدن مکالمه (متن خالی/تک‌حرف = menu) | گارد متن خالی + حداقل ۲ کاراکتر برای تطبیق زیررشتهٔ دکمه | `test_nlu_empty_and_single_char_not_menu`, `test_contact_share_mid_flow_keeps_flow` |
+| B6 — کلیدواژه وسط flow پاسخ را می‌دزد؛ لغو کار نمی‌کرد | «لغو» همیشه اول؛ متن تایپشدهٔ میان‌flow پاسخ همان مرحله است؛ دکمه (callback_data) مستثنی | `test_cancel_mid_flow_exits_flow`, `test_keyword_mid_flow_does_not_hijack` |
+| B7 — 422 انگلیسی FastAPI | هندلر `RequestValidationError` با پاکت فارسی + نام فارسی فیلدها | `test_validation_error_is_persian` |
+| B8 — Dockerfileهای خراب | `api.Dockerfile` با context ریشهٔ ریپو؛ `web.Dockerfile` standalone بدون `public` اجباری | جاب docker در CI (Build api/web image) سبز |
+| B11 — ستون‌های زمان nullable در 0001 | مهاجرت `0002_not_null_timestamps` + هوک `compare_type` برای enum غیربومی در env.py | `alembic check` تمیز + رفت‌وبرگشت مهاجرت روی PG (`test_migrations.py`)
+
+**محدودیت‌های صادقانه:**
+- `docker compose up` روی این ماشین اجرا نشده (Docker نصب نیست)؛ فقط build ایمیج‌ها در CI سبز است.
+- فاز ۳ (انتشار/نسخه/Rollback) هنوز پیاده نشده — در BACKLOG.
 
 ## فاز ۳ — انتشار و Modify (بعدها)
 

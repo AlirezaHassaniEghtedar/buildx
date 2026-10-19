@@ -3,9 +3,10 @@
 import os
 from collections.abc import AsyncIterator
 
-os.environ.setdefault("SECRET_KEY", "test-secret-key-for-tests-only-0123456789abcdef")
-os.environ.setdefault("ENV", "dev")
-os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+# قطعی، نه setdefault: ارزشِ env بیرونی (مثلاً SECRET_KEY ضعیف CI) نباید بر تست‌ها غلبه کند
+os.environ["SECRET_KEY"] = "test-secret-key-for-tests-only-0123456789abcdef"
+os.environ["ENV"] = "dev"
+os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 
 import pytest_asyncio  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
@@ -17,8 +18,12 @@ from sqlalchemy.ext.asyncio import (  # noqa: E402
 )
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
+from app.core.config import get_settings  # noqa: E402
 from app.core.models import Base  # noqa: E402
 from app.main import app  # noqa: E402
+
+# کش Settings باید بعد از ست‌کردن env پاک شود وگرنه کلید قبلیِ محیط می‌ماند
+get_settings.cache_clear()
 
 
 @pytest_asyncio.fixture

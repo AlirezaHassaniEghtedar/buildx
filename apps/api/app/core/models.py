@@ -34,6 +34,21 @@ def _uuid() -> Mapped[str]:
     return mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))  # type: ignore[no-any-return]
 
 
+def _enum(enum_cls: type[enum.Enum]) -> Enum:
+    """Enum غیربومی که **مقدار** (value) را در دیتابیس ذخیره می‌کند، نه نام را.
+
+    قبلاً نام enum (مثلاً `inbound`) ذخیره می‌شد و ستون‌های `String(N)` مهاجرت
+    جا نمی‌شدند (بازگ B3). حالا مقدار (مثلاً `in`) ذخیره می‌شود و طول ستون
+    به‌طور خودکار از بلندترین مقدار محاسبه می‌شود تا با مهاجرت یکی باشد.
+    """
+    return Enum(
+        enum_cls,
+        native_enum=False,
+        values_callable=lambda e: [member.value for member in e],
+        validate_strings=True,
+    )
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -65,12 +80,8 @@ class Bot(Base):
     id: Mapped[str] = _uuid()
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     name: Mapped[str] = mapped_column(String(120))
-    status: Mapped[BotStatus] = mapped_column(
-        Enum(BotStatus, native_enum=False), default=BotStatus.draft
-    )
-    channel: Mapped[ChannelKind | None] = mapped_column(
-        Enum(ChannelKind, native_enum=False), nullable=True
-    )
+    status: Mapped[BotStatus] = mapped_column(_enum(BotStatus), default=BotStatus.draft)
+    channel: Mapped[ChannelKind | None] = mapped_column(_enum(ChannelKind), nullable=True)
     current_version_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     published_version_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -101,9 +112,7 @@ class BotVersion(Base):
     parent_version_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     change_summary: Mapped[str] = mapped_column(Text, default="")
     diff: Mapped[dict[str, object] | None] = mapped_column(_json_type(), nullable=True)
-    status: Mapped[VersionStatus] = mapped_column(
-        Enum(VersionStatus, native_enum=False), default=VersionStatus.draft
-    )
+    status: Mapped[VersionStatus] = mapped_column(_enum(VersionStatus), default=VersionStatus.draft)
     created_by: Mapped[str] = mapped_column(String(16), default="agent")  # agent | user
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -122,9 +131,7 @@ class BuilderSession(Base):
 
     id: Mapped[str] = _uuid()
     bot_id: Mapped[str] = mapped_column(ForeignKey("bots.id"), index=True)
-    mode: Mapped[SessionMode] = mapped_column(
-        Enum(SessionMode, native_enum=False), default=SessionMode.create
-    )
+    mode: Mapped[SessionMode] = mapped_column(_enum(SessionMode), default=SessionMode.create)
     status: Mapped[str] = mapped_column(
         String(24), default="active"
     )  # active | waiting_input | done | failed
@@ -153,9 +160,7 @@ class BuilderMessage(Base):
     session_id: Mapped[str] = mapped_column(ForeignKey("builder_sessions.id"), index=True)
     role: Mapped[str] = mapped_column(String(12))  # user | agent | system | tool
     content: Mapped[str] = mapped_column(Text, default="")
-    kind: Mapped[MessageKind] = mapped_column(
-        Enum(MessageKind, native_enum=False), default=MessageKind.text
-    )
+    kind: Mapped[MessageKind] = mapped_column(_enum(MessageKind), default=MessageKind.text)
     payload: Mapped[dict[str, object] | None] = mapped_column(_json_type(), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -172,7 +177,7 @@ class TestRun(Base):
     id: Mapped[str] = _uuid()
     version_id: Mapped[str] = mapped_column(ForeignKey("bot_versions.id"), index=True)
     status: Mapped[TestRunStatus] = mapped_column(
-        Enum(TestRunStatus, native_enum=False), default=TestRunStatus.running
+        _enum(TestRunStatus), default=TestRunStatus.running
     )
     summary: Mapped[dict[str, object]] = mapped_column(_json_type(), default=dict)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -203,11 +208,9 @@ class TestCaseRow(Base):
     id: Mapped[str] = _uuid()
     run_id: Mapped[str] = mapped_column(ForeignKey("test_runs.id"), index=True)
     name: Mapped[str] = mapped_column(String(200))
-    category: Mapped[TestCategory] = mapped_column(Enum(TestCategory, native_enum=False))
+    category: Mapped[TestCategory] = mapped_column(_enum(TestCategory))
     script: Mapped[dict[str, object]] = mapped_column(_json_type())
-    status: Mapped[TestStatus] = mapped_column(
-        Enum(TestStatus, native_enum=False), default=TestStatus.pending
-    )
+    status: Mapped[TestStatus] = mapped_column(_enum(TestStatus), default=TestStatus.pending)
     failure_reason: Mapped[str] = mapped_column(Text, default="")
     transcript: Mapped[dict[str, object] | None] = mapped_column(_json_type(), nullable=True)
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
@@ -231,15 +234,11 @@ class Deployment(Base):
     id: Mapped[str] = _uuid()
     bot_id: Mapped[str] = mapped_column(ForeignKey("bots.id"), index=True)
     version_id: Mapped[str] = mapped_column(ForeignKey("bot_versions.id"))
-    channel: Mapped[ChannelKind] = mapped_column(Enum(ChannelKind, native_enum=False))
+    channel: Mapped[ChannelKind] = mapped_column(_enum(ChannelKind))
     token_encrypted: Mapped[str] = mapped_column(Text)
     webhook_secret: Mapped[str] = mapped_column(String(64))
-    mode: Mapped[DeployMode] = mapped_column(
-        Enum(DeployMode, native_enum=False), default=DeployMode.webhook
-    )
-    status: Mapped[DeployStatus] = mapped_column(
-        Enum(DeployStatus, native_enum=False), default=DeployStatus.active
-    )
+    mode: Mapped[DeployMode] = mapped_column(_enum(DeployMode), default=DeployMode.webhook)
+    status: Mapped[DeployStatus] = mapped_column(_enum(DeployStatus), default=DeployStatus.active)
     bot_username: Mapped[str] = mapped_column(String(120), default="")
     deployed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -286,7 +285,7 @@ class MessagesLog(Base):
 
     id: Mapped[str] = _uuid()
     conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"), index=True)
-    direction: Mapped[MessageDirection] = mapped_column(Enum(MessageDirection, native_enum=False))
+    direction: Mapped[MessageDirection] = mapped_column(_enum(MessageDirection))
     text: Mapped[str] = mapped_column(Text, default="")
     meta: Mapped[dict[str, object] | None] = mapped_column(_json_type(), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -308,7 +307,7 @@ class Booking(Base):
     end_user_id: Mapped[str] = mapped_column(ForeignKey("end_users.id"))
     fields: Mapped[dict[str, object]] = mapped_column(_json_type(), default=dict)
     status: Mapped[BookingStatus] = mapped_column(
-        Enum(BookingStatus, native_enum=False), default=BookingStatus.confirmed
+        _enum(BookingStatus), default=BookingStatus.confirmed
     )
     position: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -331,9 +330,7 @@ class Order(Base):
     end_user_id: Mapped[str] = mapped_column(ForeignKey("end_users.id"))
     items: Mapped[list[object]] = mapped_column(_json_type(), default=list)
     total: Mapped[float] = mapped_column(Float, default=0)
-    status: Mapped[OrderStatus] = mapped_column(
-        Enum(OrderStatus, native_enum=False), default=OrderStatus.new
-    )
+    status: Mapped[OrderStatus] = mapped_column(_enum(OrderStatus), default=OrderStatus.new)
     fields: Mapped[dict[str, object]] = mapped_column(_json_type(), default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -355,7 +352,7 @@ class LlmUsage(Base):
     id: Mapped[str] = _uuid()
     bot_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     session_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
-    purpose: Mapped[LlmPurpose] = mapped_column(Enum(LlmPurpose, native_enum=False))
+    purpose: Mapped[LlmPurpose] = mapped_column(_enum(LlmPurpose))
     model: Mapped[str] = mapped_column(String(80))
     input_tokens: Mapped[int] = mapped_column(Integer, default=0)
     output_tokens: Mapped[int] = mapped_column(Integer, default=0)
@@ -377,9 +374,7 @@ class Job(Base):
     id: Mapped[str] = _uuid()
     type: Mapped[str] = mapped_column(String(48), index=True)
     payload: Mapped[dict[str, object]] = mapped_column(_json_type(), default=dict)
-    status: Mapped[JobStatus] = mapped_column(
-        Enum(JobStatus, native_enum=False), default=JobStatus.pending
-    )
+    status: Mapped[JobStatus] = mapped_column(_enum(JobStatus), default=JobStatus.pending)
     run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
