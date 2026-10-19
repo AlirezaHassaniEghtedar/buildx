@@ -1,7 +1,60 @@
-from functools import lru_cache
+"""تنظیمات سرویس — مستقل از cwd: .env و dev.db نسبت به مسیر فایل، نه پوشهٔ جاری.
 
-from pydantic import field_validator
+R16/R17: قبلاً `env_file=".env"` نسبت به پوشهٔ جاری حل می‌شد؛ uvicorn از ریشهٔ ریپو
+`.env` را پیدا نمی‌کرد و با `ValidationError: secret_key Field required` می‌مرد،
+و فایل .env ساخته‌شده با PowerShell 5 (BOM) هم خراب خوانده می‌شد.
+"""
+
+from functools import lru_cache
+from pathlib import Path
+
+from pydantic import ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# apps/api — مبنا برای .env و dev.db (با resolve تا از هر cwd یک فایل دیده شود)
+API_DIR = Path(__file__).resolve().parents[2]
+# ریشهٔ ریپو — برای .env مشترک در ریشه (اختیاری)
+REPO_ROOT = API_DIR.parents[1]
+# فایل اصلی مورد انتظار توسعه‌دهنده
+PRIMARY_ENV = API_DIR / ".env"
+# در pydantic-settings وقتی env_file tuple باشد، فایلِ «آخر» برندهٔ نهایی است؛
+# پس apps/api/.env آخر می‌آید تا اولویت داشته باشد و ریشه فقط جایگزین باشد.
+ENV_FILES: tuple[Path, ...] = (REPO_ROOT / ".env", PRIMARY_ENV)
+
+_SQLITE_PREFIX = "sqlite+aiosqlite:///"
+
+
+def resolve_sqlite_url(url: str) -> str:
+    """مسیر نسبی SQLite را نسبت به API_DIR مطلق می‌کند تا از هر cwd به یک فایل برسد.
+
+    `:memory:` و مسیرهای مطلق دست‌نخورده می‌مانند.
+    """
+    if url.startswith(_SQLITE_PREFIX):
+        path = url[len(_SQLITE_PREFIX) :]
+        if path not in {":memory:", ""} and not Path(path).is_absolute():
+            return _SQLITE_PREFIX + str((API_DIR / path).resolve())
+    return url
+
+
+class SettingsError(RuntimeError):
+    """خطای راه‌اندازی تنظیمات با پیام فارسی و راهنما (بدون تریس‌بک خام Pydantic)."""
+
+
+# پیام‌های فارسی برای خطاهای رایج راه‌اندازی
+_FIELD_MSG_FA = {
+    "secret_key": ("SECRET_KEY خالی است یا فایل .env پیدا نشد؛ کلید باید حداقل ۳۲ بایت باشد."),
+}
+
+
+def _settings_error(e: ValidationError) -> SettingsError:
+    lines = ["راه‌اندازی ناموفق: تنظیمات ناقص است:"]
+    for err in e.errors():
+        loc = ".".join(str(x) for x in err["loc"]) or "؟"
+        lines.append(f"  - {loc}: {_FIELD_MSG_FA.get(loc, str(err['msg']))}")
+    lines.append(f"  فایل تنظیمات مورد انتظار: {PRIMARY_ENV}")
+    lines.append('  ساخت کلید: python -c "import secrets; print(secrets.token_urlsafe(48))"')
+    lines.append(f"  پوشهٔ جاری: {Path.cwd()}")
+    return SettingsError("\n".join(lines))
 
 
 class Settings(BaseSettings):
@@ -33,9 +86,24 @@ class Settings(BaseSettings):
             )
         return v
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    @field_validator("database_url")
+    @classmethod
+    def _resolve_database_url(cls, v: str) -> str:
+        return resolve_sqlite_url(v)
+
+    # env_file مطلق است → از هر cwd یک فایل دیده می‌شود؛ utf-8-sig تا BOM هم خوانده شود
+    model_config = SettingsConfigDict(
+        env_file=ENV_FILES, env_file_encoding="utf-8-sig", extra="ignore"
+    )
+
+
+def _load_settings() -> Settings:
+    try:
+        return Settings(_env_file=ENV_FILES)
+    except ValidationError as e:
+        raise _settings_error(e) from None
 
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()  # type: ignore[call-arg]
+    return _load_settings()

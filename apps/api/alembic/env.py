@@ -40,10 +40,11 @@ def _compare_non_native_enum(
 
 
 def _sync_url() -> str:
+    # آفلاین: URL همزمان‌شده — مسیر نسبی SQLite قبلاً در Settings نسبت به apps/api مطلق شده
     url = get_settings().database_url
-    return url.replace("postgresql+asyncpg://", "postgresql+psycopg://").replace(
-        "sqlite+aiosqlite://", "sqlite"
-    )
+    if url.startswith("sqlite+aiosqlite:///"):
+        return "sqlite:///" + url[len("sqlite+aiosqlite:///") :]
+    return url.replace("postgresql+asyncpg://", "postgresql+psycopg://")
 
 
 def run_migrations_offline() -> None:

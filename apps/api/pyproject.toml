@@ -43,6 +43,9 @@ packages = ["app"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+  "pg: به Postgres واقعی نیاز دارد (DATABASE_URL_TEST_PG)؛ جاب‌های CI بدون PG با ALLOW_MISSING_PG=1 و -m 'not pg' رد می‌شوند",
+]
 
 [tool.ruff]
 line-length = 100

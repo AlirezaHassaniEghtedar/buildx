@@ -45,3 +45,67 @@ def test_conftest_overrides_weak_env_secret_key() -> None:
     )
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "47"  # کلید قویِ خودِ conftest، نه کلید ضعیف محیط
+
+
+# ── فاز ۰ (R16/R17): استقلال از cwd، BOM، پیام خطای فارسی ──────────────
+
+STRONG_KEY = "bom-and-cwd-test-key-0123456789abcdefghijklmnopqrst"
+
+
+def test_env_file_with_and_without_bom(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """R17: فایل .env با BOM (خروجی PowerShell 5 با `>`) و بدون BOM هر دو باید درست خوانده شوند."""
+    monkeypatch.delenv("SECRET_KEY", raising=False)  # تا مقدار فقط از فایل بیاید
+    f_bom = tmp_path / "env_with_bom"
+    f_bom.write_bytes(b"\xef\xbb\xbf" + f"SECRET_KEY={STRONG_KEY}\n".encode())
+    f_plain = tmp_path / "env_plain"
+    f_plain.write_text(f"SECRET_KEY={STRONG_KEY}\n", encoding="utf-8")
+
+    assert Settings(_env_file=f_bom).secret_key == STRONG_KEY  # نشت BOM ممنوع
+    assert Settings(_env_file=f_plain).secret_key == STRONG_KEY
+
+
+def test_missing_secret_key_gives_persian_settings_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R16: نبودِ SECRET_KEY باید خطای فارسیِ راهنما بدهد، نه تریس‌بک خام Pydantic."""
+    from app.core import config as configmod
+
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    monkeypatch.setattr(configmod, "ENV_FILES", (tmp_path / "nope.env",))
+    configmod.get_settings.cache_clear()
+    try:
+        with pytest.raises(configmod.SettingsError) as excinfo:
+            configmod.get_settings()
+        msg = str(excinfo.value)
+        assert "SECRET_KEY" in msg
+        assert ".env" in msg
+        assert "token_urlsafe" in msg  # دستور ساخت کلید
+        assert str(tmp_path) in msg or "پوشه" in msg  # مسیر/راهنما
+    finally:
+        monkeypatch.setenv("SECRET_KEY", "test-secret-key-for-tests-only-0123456789abcdef")
+        configmod.get_settings.cache_clear()
+
+
+def test_sqlite_relative_resolved_under_api_dir() -> None:
+    """R16: dev.db باید مستقل از cwd همیشه زیر apps/api ساخته شود."""
+    from app.core.config import API_DIR, resolve_sqlite_url
+
+    url = resolve_sqlite_url("sqlite+aiosqlite:///./dev.db")
+    assert url == f"sqlite+aiosqlite:///{(API_DIR / 'dev.db').resolve()}"
+    # حافظه و مسیر مطلق دست‌نخورده می‌مانند
+    assert resolve_sqlite_url("sqlite+aiosqlite:///:memory:") == "sqlite+aiosqlite:///:memory:"
+    abs_url = (
+        "sqlite+aiosqlite:///C:/tmp/x.db" if os.name == "nt" else "sqlite+aiosqlite:////tmp/x.db"
+    )
+    assert resolve_sqlite_url(abs_url) == abs_url
+
+
+def test_settings_works_from_any_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """R16: از هر پوشه‌ای Settings باید یک dev.db واحد ببیند، نه مسیر نسبت به cwd."""
+    monkeypatch.chdir(tmp_path)
+    # conftest این‌ها را ست کرده؛ پیش‌فرضِ خودِ Settings را می‌سنجیم
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    s = Settings(secret_key=STRONG_KEY, _env_file=None)
+    from app.core.config import API_DIR
+
+    assert s.database_url == f"sqlite+aiosqlite:///{(API_DIR / 'dev.db').resolve()}"

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from app.core.config import get_settings
+from app.core.config import get_settings, resolve_sqlite_url
 
 _engine: AsyncEngine | None = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None
@@ -19,7 +19,8 @@ _sessionmaker: async_sessionmaker[AsyncSession] | None = None
 
 def _make_engine() -> AsyncEngine:
     settings = get_settings()
-    url = os.getenv("DATABASE_URL") or settings.database_url
+    # مسیر نسبی SQLite (چه از env چه از .env) باید نسبت به apps/api مطلق شود تا از هر cwd یک فایل دیده شود
+    url = resolve_sqlite_url(os.getenv("DATABASE_URL") or settings.database_url)
     if url.startswith("sqlite"):
         return create_async_engine(
             url, connect_args={"check_same_thread": False}, echo=settings.sql_echo

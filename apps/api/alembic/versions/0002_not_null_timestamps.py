@@ -51,29 +51,50 @@ def _ts() -> sa.types.TypeEngine[object]:
     return postgresql.TIMESTAMP(timezone=True)
 
 
+def _now_sqlite_ok() -> str:
+    """SQLite تابع now() ندارد؛ CURRENT_TIMESTAMP هر دو دیتابیس قبولش دارند."""
+    bind = op.get_bind()
+    return "CURRENT_TIMESTAMP" if bind.dialect.name == "sqlite" else "now()"
+
+
+def _backfill(table: str, column: str) -> None:
+    # ردیف‌های NULL قبل از NOT NULL شدن پر می‌شوند (dialect-agnostic)
+    op.execute(
+        sa.text(f"UPDATE {table} SET {column} = {_now_sqlite_ok()} WHERE {column} IS NULL")
+    )
+
+
+def _alter_nullable(table: str, column: str, *, nullable: bool) -> None:
+    """alter_column روی SQLite فقط در batch ممکن است؛ روی PG همان ALTER معمولی."""
+    if op.get_bind().dialect.name == "sqlite":
+        with op.batch_alter_table(table) as batch_op:
+            batch_op.alter_column(
+                column,
+                existing_type=_ts(),
+                nullable=nullable,
+                existing_server_default=sa.text("now()"),
+            )
+    else:
+        op.alter_column(
+            table,
+            column,
+            existing_type=_ts(),
+            nullable=nullable,
+            existing_server_default=sa.text("now()"),
+        )
+
+
 def upgrade() -> None:
     # تبدیل دادهٔ قدیمی direction: نام enum (inbound/outbound) → مقدار (in/out)
     op.execute("UPDATE messages_log SET direction = 'in' WHERE direction = 'inbound'")
     op.execute("UPDATE messages_log SET direction = 'out' WHERE direction = 'outbound'")
 
-    # NOT NULL کردن ستون‌های زمان؛ ردیف‌های NULL اول با now() پر می‌شوند
+    # NOT NULL کردن ستون‌های زمان؛ ردیف‌های NULL اول پر می‌شوند
     for table, column in _NULLABLE_TIMESTAMPS:
-        op.execute(sa.text(f"UPDATE {table} SET {column} = now() WHERE {column} IS NULL"))
-        op.alter_column(
-            table,
-            column,
-            existing_type=_ts(),
-            nullable=False,
-            existing_server_default=sa.text("now()"),
-        )
+        _backfill(table, column)
+        _alter_nullable(table, column, nullable=False)
 
 
 def downgrade() -> None:
     for table, column in reversed(_NULLABLE_TIMESTAMPS):
-        op.alter_column(
-            table,
-            column,
-            existing_type=_ts(),
-            nullable=True,
-            existing_server_default=sa.text("now()"),
-        )
+        _alter_nullable(table, column, nullable=True)

@@ -19,16 +19,21 @@ import pytest_asyncio
 PG_URL = os.environ.get("DATABASE_URL_TEST_PG", "")
 HAS_PG = PG_URL.startswith("postgresql")
 IN_CI = os.environ.get("CI", "").lower() in {"1", "true", "yes"}
+# جاب‌های CI بدون PG (مثلاً ویندوز) باید صریح و مستند skip کنند، نه سکوت
+ALLOW_NO_PG = os.environ.get("ALLOW_MISSING_PG", "").lower() in {"1", "true", "yes"}
 
-if not HAS_PG and IN_CI:
+if not HAS_PG and IN_CI and not ALLOW_NO_PG:
     pytest.fail(
         "DATABASE_URL_TEST_PG در CI ست نیست؛ سرویس Postgres باید به ورک‌فلو اضافه شود.",
         pytrace=False,
     )
 
-pytestmark = pytest.mark.skipif(
-    not HAS_PG, reason="تست مهاجرت به Postgres نیاز دارد (DATABASE_URL_TEST_PG)"
-)
+pytestmark = [
+    pytest.mark.pg,
+    pytest.mark.skipif(
+        not HAS_PG, reason="تست مهاجرت به Postgres نیاز دارد (DATABASE_URL_TEST_PG)"
+    ),
+]
 
 API_DIR = Path(__file__).resolve().parent.parent
 
