@@ -1,0 +1,22 @@
+# همهٔ متن‌ها با LF ذخیره و checkout شوند (ریسک CRLF در فایل‌های shell/Docker/YAML
+# هنگام checkout روی ویندوز را حذف می‌کند — R19)
+* text=auto eol=lf
+
+# اسکریپت‌های ویندوزی native با CRLF
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# باینری‌ها
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.pdf binary
+*.zip binary
