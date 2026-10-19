@@ -41,10 +41,14 @@ async def detect_intent(
     llm_allowed: bool = True,
 ) -> Intent:
     """دکمه‌ها اول؛ بعد قواعد؛ بعد LLM فقط برای متن آزاد."""
+    # متن خالی/فضای خالی (مثلاً اشتراک شمارهٔ تماس در تلگرام) نباید هیچ intentی بسازد
+    if not text.strip():
+        return Intent(name="unknown")
     if buttons:
         t = text.strip()
         for b in buttons:
-            if t == b or t in b:
+            # تطبیق زیررشته فقط برای ورودی حداقل ۲ کاراکتری؛ «» و «ر» دکمه حساب نمی‌شوند
+            if t == b or (len(t) >= 2 and t in b):
                 return Intent(name="menu", slots={"button": b})
     if faq_questions:
         t = text.strip()
